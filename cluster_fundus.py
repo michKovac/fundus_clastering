@@ -149,13 +149,22 @@ def visualize_clusters(X, labels, output_dir, title):
 
 
 def copy_clustered_images(metadata_list, labels, input_dir, output_dir):
+    total = len(metadata_list)
+
+    # Add labels to metadata
     for i, item in enumerate(metadata_list):
         item["Cluster"] = int(labels[i])
 
+    # Count images per cluster
+    from collections import Counter
+    cluster_counts = Counter(labels)
+
+    # Create folders with descriptive names
     cluster_dirs = {}
-    for label in np.unique(labels):
-        dir_name = f"Cluster_{label}" if label >= 0 else "Noise"
-        cluster_path = os.path.join(output_dir, dir_name)
+    for label, count in cluster_counts.items():
+        percentage = (count / total) * 100
+        folder_name = f"Cluster {label}: {count} images ({percentage:.1f}%)" if label >= 0 else f"Noise: {count} images ({percentage:.1f}%)"
+        cluster_path = os.path.join(output_dir, folder_name)
         os.makedirs(cluster_path, exist_ok=True)
         cluster_dirs[label] = cluster_path
 

@@ -4,7 +4,7 @@ This project performs **unsupervised clustering** of fundus images based on thei
 
 ---
 
-## 🧠 Project Overview
+## Project Overview
 
 Fundus images can vary significantly in color due to lighting, camera settings, and patient physiology. Grouping these images by color distribution helps in:
 
@@ -20,7 +20,7 @@ This tool allows you to:
 
 ---
 
-## 🗂️ Project Structure
+## Project Structure
 
 ```
 project/
@@ -36,7 +36,7 @@ project/
 
 ---
 
-## 🚀 Getting Started
+## Getting Started
 
 ### 1. Install Requirements
 
@@ -60,7 +60,7 @@ python cluster_fundus_images.py
 
 ---
 
-## ⚙️ Configuration
+## Configuration
 
 You can modify the following parameters in `main()`:
 
@@ -76,7 +76,7 @@ feature_mode = "quartiles"  # Options: 'quartiles', 'hsv_median', 'hue_circle', 
 
 ---
 
-## 📊 Feature Modes
+## Feature Modes
 
 | Mode          | Description                                      |
 |---------------|--------------------------------------------------|
@@ -87,7 +87,7 @@ feature_mode = "quartiles"  # Options: 'quartiles', 'hsv_median', 'hue_circle', 
 
 ---
 
-## 📈 Clustering Methods
+## Clustering Methods
 
 - **DBSCAN**: Density-based, great for finding arbitrary shaped clusters
 - **OPTICS**: Similar to DBSCAN, handles varying density
@@ -95,14 +95,14 @@ feature_mode = "quartiles"  # Options: 'quartiles', 'hsv_median', 'hue_circle', 
 
 ---
 
-## 📷 Example Results
+## Example Results
 
 ![t-SNE Projection](DDR-Clustering/tsne_projection.png)
 *3D t-SNE of clustered fundus images*
 
 ---
 
-## 🧪 Tips
+## Tips
 
 - Adjust `eps` and `min_samples` for DBSCAN/OPTICS depending on dataset size.
 - Use `kmeans` when you know approximately how many color groups you expect.
@@ -110,7 +110,7 @@ feature_mode = "quartiles"  # Options: 'quartiles', 'hsv_median', 'hue_circle', 
 
 ---
 
-## 📄 License
+## License
 
 This project is open-source and available under the [MIT License](LICENSE).
 

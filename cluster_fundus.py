@@ -5,6 +5,9 @@ import cv2
 import shutil
 import time
 from concurrent.futures import ThreadPoolExecutor
+import matplotlib
+#matplotlib.use('Agg')  # Disable GUI backend to avoid tkinter errors
+
 import matplotlib.pyplot as plt
 from sklearn.preprocessing import StandardScaler
 from sklearn.manifold import TSNE
@@ -48,7 +51,7 @@ def load_or_process_images(input_dir, cache_file):
         return pd.read_csv(cache_file).to_dict(orient="records")
 
     print("No cached HSV data found, processing images...")
-    jpg_files = [f for f in os.listdir(input_dir) if f.lower().endswith(('.jpg', '.jpeg'))]
+    jpg_files = [f for f in os.listdir(input_dir) if f.lower().endswith(('.jpg', '.jpeg','.png'))]
     file_tuples = [(os.path.join(input_dir, f), f) for f in jpg_files]
 
     metadata_list = []
@@ -102,16 +105,20 @@ def extract_features(metadata_list, mode="quartiles"):
 
 
 def run_clustering(X, method="dbscan", **kwargs):
+    labels = None
     if method == "dbscan":
         model = DBSCAN(eps=kwargs.get("eps", 0.5), min_samples=kwargs.get("min_samples", 5))
+        labels = model.fit_predict(X)
     elif method == "optics":
         model = OPTICS(xi=kwargs.get("xi", 0.05), min_samples=kwargs.get("min_samples", 5), max_eps=kwargs.get("max_eps", np.inf))
+        labels = model.fit_predict(X)
     elif method == "kmeans":
-        model = KMeans(n_clusters=kwargs.get("n_clusters", 4), random_state=42, n_init=10)
+        model = KMeans(n_clusters=kwargs.get("n_clusters", 4), random_state=42, n_init=kwargs.get("n_init", 10)).fit(X)
+        labels = model.labels_
     else:
         raise ValueError("Unsupported clustering method")
 
-    labels = model.fit_predict(X)
+    
     return labels
 
 
@@ -125,8 +132,81 @@ def visualize_tsne(X, labels, output_dir):
     legend = ax.legend(*scatter.legend_elements(), title="Classes")
     ax.add_artist(legend)
     plt.title("t-SNE Projection (3D)")
-    plt.savefig(os.path.join(output_dir, 'tsne_projection.png'))
+    plt.savefig(os.path.join(output_dir, 'tsne_projection.pdf'))
+    plt.show()  
     plt.close()
+
+def visualize_tsne_2d(X, labels, output_dir):
+    from sklearn.manifold import TSNE
+    import matplotlib.pyplot as plt
+    import numpy as np
+    import os
+
+    # Apply t-SNE to reduce to 2D
+    tsne = TSNE(n_components=2, random_state=42, perplexity=30)
+    X_2d = tsne.fit_transform(X)
+
+    # Normalize labels to color map range
+    unique_labels = np.unique(labels)
+    label_map = {label: idx for idx, label in enumerate(unique_labels)}
+    mapped_labels = np.array([label_map[l] for l in labels])
+
+    plt.figure(figsize=(10, 8))
+    scatter = plt.scatter(
+        X_2d[:, 0], X_2d[:, 1],
+        c=mapped_labels,
+        s=40,
+        alpha=0.8
+    )
+    plt.title("t-SNE Projection")
+    plt.xlabel("t-SNE 1")
+    plt.ylabel("t-SNE 2")
+
+    # Add legend
+    handles, _ = scatter.legend_elements()
+    legend_labels = [f"Cluster {l}" if l != -1 else "Noise" for l in unique_labels]
+    plt.legend(handles, legend_labels, title="Clusters", loc="best")
+
+    os.makedirs(output_dir, exist_ok=True)
+    plt.savefig(os.path.join(output_dir, 'tsne_2d.pdf'))
+    plt.close()
+
+
+def visualize_hsv_q2_3d(metadata, labels, output_dir):
+    import matplotlib.pyplot as plt
+    from mpl_toolkits.mplot3d import Axes3D
+    import numpy as np
+    import os
+
+    # Extract Q2 (median) values for H, S, V
+    X_q2 = np.array([
+        [item["Hue Q2"], item["Sat Q2"], item["Val Q2"]]
+        for item in metadata
+    ])
+
+    fig = plt.figure(figsize=(10, 7))
+    ax = fig.add_subplot(111, projection='3d')
+    scatter = ax.scatter(
+        X_q2[:, 0], X_q2[:, 1], X_q2[:, 2],
+        c=labels,
+        cmap='viridis',
+        s=50,
+        alpha=0.8
+    )
+    legend = ax.legend(*scatter.legend_elements(), title="Clusters")
+    ax.add_artist(legend)
+
+    ax.set_xlabel("Hue Q2")
+    ax.set_ylabel("Saturation Q2")
+    ax.set_zlabel("Value Q2")
+    ax.set_title("HSV Q2 Quartiles (3D)")
+
+    os.makedirs(output_dir, exist_ok=True)
+    plt.savefig(os.path.join(output_dir, 'hsv_q2_3d.pdf'))
+    plt.show()  # 👈 Display the plot interactively
+    plt.close()
+
+
 
 
 def visualize_clusters(X, labels, output_dir, title):
@@ -144,8 +224,87 @@ def visualize_clusters(X, labels, output_dir, title):
     plt.ylabel('Feature 2')
     plt.legend()
     plt.grid(True)
-    plt.savefig(os.path.join(output_dir, 'clusters_visualization.png'))
+    plt.savefig(os.path.join(output_dir, 'clusters_visualization.pdf'))
     plt.close()
+
+def create_cluster_collage(
+    metadata,
+    input_dir,
+    output_path,
+    images_per_cluster=16,
+    thumb_size=(512, 512),
+    grid_cols_per_cluster=8,
+    clusters_per_row=4
+):
+    import math
+    from collections import defaultdict
+
+    cluster_dict = defaultdict(list)
+    for item in metadata:
+        cluster_dict[item["Cluster"]].append(item["Image Name"])
+
+    collage_blocks = []
+
+    sorted_cluster_ids = sorted([cid for cid in cluster_dict.keys() if cid != -1])
+    for i, cluster_id in enumerate(sorted_cluster_ids + [-1]):  # Add noise at end
+        images = cluster_dict[cluster_id]
+        selected = images[:images_per_cluster]
+        thumbnails = []
+
+        for img_name in selected:
+            img_path = os.path.join(input_dir, img_name)
+            img = cv2.imread(img_path)
+            if img is None:
+                continue
+            img = cv2.resize(img, thumb_size)
+            thumbnails.append(img)
+
+        while len(thumbnails) < images_per_cluster:
+            thumbnails.append(np.ones((thumb_size[1], thumb_size[0], 3), dtype=np.uint8) * 255)
+
+        grid_rows = math.ceil(images_per_cluster / grid_cols_per_cluster)
+        block_height = grid_rows * thumb_size[1]
+        block_width = grid_cols_per_cluster * thumb_size[0]
+        grid = np.ones((block_height, block_width, 3), dtype=np.uint8) * 255
+
+        for idx, thumb in enumerate(thumbnails):
+            r = idx // grid_cols_per_cluster
+            c = idx % grid_cols_per_cluster
+            grid[r * thumb_size[1]:(r + 1) * thumb_size[1], c * thumb_size[0]:(c + 1) * thumb_size[0]] = thumb
+
+        label = "-1" if cluster_id == -1 else str(i + 1)  # 1-indexed clusters
+        font_scale = 10
+        thickness = 25
+        text_size = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, font_scale, thickness)[0]
+        text_x = 10
+        text_y = 10 + text_size[1]
+        cv2.putText(
+            grid,
+            label,
+            (text_x, text_y),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            font_scale,
+            (255, 255, 255),
+            thickness,
+            cv2.LINE_AA
+        )
+
+        collage_blocks.append(grid)
+
+    # Assemble final collage layout
+    n_blocks = len(collage_blocks)
+    layout_cols = clusters_per_row
+    layout_rows = math.ceil(n_blocks / layout_cols)
+    block_h, block_w = collage_blocks[0].shape[:2]
+    full_collage = np.ones((layout_rows * block_h, layout_cols * block_w, 3), dtype=np.uint8) * 255
+
+    for idx, block in enumerate(collage_blocks):
+        r = idx // layout_cols
+        c = idx % layout_cols
+        full_collage[r * block_h:(r + 1) * block_h, c * block_w:(c + 1) * block_w] = block
+
+    cv2.imwrite(output_path, full_collage)
+    print(f"Cluster collage saved to: {output_path}")
 
 
 def copy_clustered_images(metadata_list, labels, input_dir, output_dir):
@@ -195,8 +354,8 @@ def summarize_clusters(labels, total_images):
 
 
 def main():
-    input_dir = "/home/michal/Downloads/DR_grading/sorted_train/0"
-    output_dir = "DDR-Clustering"
+    input_dir = "/home/michal/Documents/Veronika Clustre/mix_dr0_idrid_ddr_messidor2"
+    output_dir = "messidor-Clustering_multiclass"
     cache_file = os.path.join(output_dir, "image_metadata.csv")
 
     os.makedirs(output_dir, exist_ok=True)
@@ -212,18 +371,31 @@ def main():
     # CHANGE THIS LINE TO SWITCH METHODS
     clustering_method = "dbscan"  # options: 'dbscan', 'optics', 'kmeans'
     clustering_params = {
-        "eps": 0.6,
-        "min_samples": 50,
+        "eps": 0.59,
+        "min_samples": 20,
         "n_clusters": 4,  # used only for kmeans
+        "n_init": 20,
     }
     labels = run_clustering(X, method=clustering_method, **clustering_params)
 
     print("Visualizing clusters...")
     visualize_tsne(X, labels, output_dir)
+    visualize_tsne_2d(X, labels, output_dir)
+    visualize_hsv_q2_3d(metadata, labels, output_dir)
     visualize_clusters(X, labels, output_dir, title=f"{clustering_method.upper()} Clustering Results")
 
     print("Copying clustered images to folders...")
     metadata = copy_clustered_images(metadata, labels, input_dir, output_dir)
+    print("Creating cluster collage...")
+    create_cluster_collage(
+        metadata,
+        input_dir,
+        output_path=os.path.join(output_dir, "cluster_collage.jpg"),
+        grid_cols_per_cluster=6,
+        clusters_per_row=2
+    )
+
+
 
     print("Saving final metadata...")
     pd.DataFrame(metadata).to_csv(cache_file, index=False)
